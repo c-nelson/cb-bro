@@ -1,0 +1,1 @@
+Run trailing stop losses on bitcoin
