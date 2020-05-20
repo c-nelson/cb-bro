@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -13,10 +14,15 @@ import (
 
 func main() {
 
+	sec := 10
+	windowSize := 10
+	windowDuration := (time.Duration(sec*windowSize) * time.Second)
+	currency := "BTC"
+
 	// set up a log file in the samem directory
 	logfile, err := os.OpenFile("tsl.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
-		log.Fatalf("[error] opening log file: %v\n", err)
+		log.Fatalf("[error]   opening log file: %v\n", err)
 	}
 	defer logfile.Close()
 	log.SetOutput(logfile)
@@ -27,16 +33,10 @@ func main() {
 		Timeout: 15 * time.Second,
 	}
 
-	// get the bitcoin ticker, used to get prices
-	ticker, err := client.GetTicker("BTC-USD")
-	if err != nil {
-		log.Fatalf("[error] finding btc ticker: %v\n", err)
-	}
-
 	// get my btc account
-	btc, err := GetBTCAccount(client)
+	btc, err := GetBTCAccount(client, currency)
 	if err != nil {
-		log.Fatalf("[error] getting btc account: %v\n", err)
+		log.Fatalf("[error]   getting btc account: %v\n", err)
 	}
 
 	// config the TSL order
@@ -46,43 +46,85 @@ func main() {
 		tslPercent: 0.05,
 	}
 
-	// set up a rolling window slice for the last 10 prices
-	var lastPrices = rolling.NewPointPolicy(rolling.NewWindow(10))
+	// cancel all existing orders
+	CancelExistingOrders(client, currency)
 
-	start := time.Now()
+	// set up a rolling window slice for the last 'windowSize' # of prices
+	var lastPrices = rolling.NewPointPolicy(rolling.NewWindow(windowSize))
+
+	sw := StopWatch{
+		Start: time.Now(),
+	}
 	// loop until sell is made
 	for {
 		// wait to get next price
-		time.Sleep(10 * time.Second)
-		// get the current price of bitcoin
-		curPrice, err := strconv.ParseFloat(ticker.Price, 32)
+		wait(sec)
+
+		price, err := getCurrentPrice(client)
 		if err != nil {
-			log.Println("[warn] could not get a new btc price")
 			continue
 		}
 
-		if time.Now().Sub(start) > (100 * time.Second) {
-			log.Printf("[info] 100 second rolling average: %f\n", lastPrices.Reduce(rolling.Avg))
-			log.Printf("[info] 100 second rolling max: %f\n", lastPrices.Reduce(rolling.Max))
-			log.Printf("[info] 100 second rolling min: %f\n", lastPrices.Reduce(rolling.Min))
-			balanceValue, _ := strconv.ParseFloat(btc.Balance, 32)
-			balanceValue *= curPrice
-			log.Printf("[account] value: %f, balance %s\n", balanceValue, btc.Balance)
-			start = time.Now()
+		// if enough time has elapsed log information
+		if sw.Elapsed() > windowDuration {
+			logInfo(&tsl, (sec * windowSize), lastPrices, price)
+			sw.Reset()
 		}
 
-		if curPrice > lastPrices.Reduce(rolling.Max) {
-			tsl.CancelOrder()
-			tsl.ChangeSellPrice(curPrice)
-			tsl.CreateOrder()
-			log.Printf("\n[order] placed for: %f\n\n", tsl.sellPrice)
+		// if the current price is more than the rolling max
+		// update the trailing stop order to a higher value
+		if price > lastPrices.Reduce(rolling.Max) {
+			fmt.Println("order")
+			fmt.Println(price, lastPrices.Reduce(rolling.Max))
+			tsl.UpdateOrder(price)
 		}
-		if tsl.order.Status == "done" {
-			log.Printf("[exe] sell executed for %s\n", tsl.order.ExecutedValue)
-			os.Exit(1)
-		}
-		lastPrices.Append(curPrice)
+
+		// if we have executed the trailing stop order
+		// exit the program
+		onSellLogAndExit(&tsl)
+
+		// add the newest price to the rolling window
+		lastPrices.Append(price)
 
 	}
 
+}
+
+// if the trade is executed, exit the program
+func onSellLogAndExit(tsl *TrailingStopLoss) {
+	if tsl.order.Status == "done" {
+		log.Printf("[exe]     sell executed for %s\n", tsl.order.ExecutedValue)
+		os.Exit(1)
+	}
+}
+
+// get the current price of bitcoin
+func getCurrentPrice(c *cbp.Client) (float64, error) {
+	// get the bitcoin ticker, used to get prices
+	ticker, err := c.GetTicker("BTC-USD")
+	if err != nil {
+		log.Fatalf("[error]   finding btc ticker: %v\n", err)
+	}
+	// get the current price of bitcoin
+	curPrice, err := strconv.ParseFloat(ticker.Price, 32)
+	if err != nil {
+		log.Println("[warn]    could not get a new btc price")
+	}
+	return curPrice, err
+}
+
+// helper function to log stats
+func logInfo(tsl *TrailingStopLoss, time int, lastPrices *rolling.PointPolicy, currentPrice float64) {
+	log.Printf("[info]    %v second rolling average: %f\n", time, lastPrices.Reduce(rolling.Avg))
+	log.Printf("[info]    %v second rolling max: %f\n", time, lastPrices.Reduce(rolling.Max))
+	log.Printf("[info]    %v second rolling min: %f\n", time, lastPrices.Reduce(rolling.Min))
+	log.Printf("[account] active stop order: %f\n", tsl.sellPrice)
+	balanceValue, _ := strconv.ParseFloat(tsl.account.Balance, 32)
+	balanceValue *= currentPrice
+	log.Printf("[account] value: %f, balance %s\n", balanceValue, tsl.account.Balance)
+}
+
+// wait sec seconds
+func wait(sec int) {
+	time.Sleep(time.Duration(sec) * time.Second)
 }

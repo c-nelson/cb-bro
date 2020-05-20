@@ -36,6 +36,7 @@ func (tsl *TrailingStopLoss) SetAccount(a cbp.Account) {
 // CreateOrder creates an order based on the values of the TSL and saves the order to tsl.order
 func (tsl *TrailingStopLoss) CreateOrder() {
 	tsl.order = cbp.Order{
+		Price:       fmt.Sprintf("%.2f", tsl.sellPrice),
 		Size:        tsl.account.Balance,
 		Side:        "sell",
 		Stop:        "loss",
@@ -54,13 +55,23 @@ func (tsl *TrailingStopLoss) CreateOrder() {
 // CancelOrder cancels the TSL
 func (tsl *TrailingStopLoss) CancelOrder() {
 	if tsl.order == (cbp.Order{}) {
-		fmt.Println("no order to cancel")
+		log.Println("[warn]    no order to cancel")
 	} else {
 		err := tsl.client.CancelOrder(tsl.order.ID)
 		if err != nil {
-			fmt.Println("could not cancel order")
+			log.Println("[warn]    could not cancel order")
 		}
 		tsl.order = cbp.Order{}
 		tsl.UpdateTime()
 	}
+}
+
+// UpdateOrder with newest pricing information
+func (tsl *TrailingStopLoss) UpdateOrder(newPrice float64) {
+	if tsl.order != (cbp.Order{}) {
+		tsl.CancelOrder()
+	}
+	tsl.ChangeSellPrice(newPrice)
+	tsl.CreateOrder()
+	log.Printf("[order]   placed for: %f\n", tsl.sellPrice)
 }
