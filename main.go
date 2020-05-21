@@ -19,7 +19,6 @@ func main() {
 	windowDuration := (time.Duration(sec*windowSize) * time.Second)
 	currency := "BTC"
 	tslPercent := 0.05
-	new := false
 
 	// set up a log file in the samem directory
 	logfile, err := os.OpenFile("tsl.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
@@ -52,12 +51,13 @@ func main() {
 	eo, err := GetExistingOrder(client, currency)
 	if err != nil {
 		log.Println("[warn]   didn't find existing orders")
-		new = true
+		price, _ := getCurrentPrice(client)
+		tsl.ChangeSellPrice(price)
+		tsl.CreateOrder()
 	} else {
 		tsl.sellPrice, _ = strconv.ParseFloat(eo.Price, 32)
 		tsl.order = eo
 		log.Printf("[info]   found exiting order, price %v\n", eo.Price)
-		new = false
 	}
 
 	// cancel all existing orders
@@ -87,16 +87,13 @@ func main() {
 			sw.Reset()
 		}
 
-		// if no order is placed, place one
 		// if the current price is more than the rolling max
 		// update the trailing stop order to a higher value
-		if new {
-			tsl.ChangeSellPrice(price)
-			tsl.CreateOrder()
-			new = false
-		} else if price > lastPrices.Reduce(rolling.Max) && price*(1-tslPercent) > tsl.sellPrice {
-			fmt.Println("order")
-			fmt.Println(price, lastPrices.Reduce(rolling.Max))
+		fmt.Println("rolling max", lastPrices.Reduce(rolling.Max))
+		fmt.Println("price", price)
+		fmt.Println("stop", price*(1-tslPercent))
+		if price > lastPrices.Reduce(rolling.Max) || price*(1-tslPercent) > tsl.sellPrice {
+			fmt.Println("--order--")
 			tsl.UpdateOrder(price)
 		}
 

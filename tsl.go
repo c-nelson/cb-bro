@@ -50,6 +50,7 @@ func (tsl *TrailingStopLoss) CreateOrder() {
 	}
 	tsl.order = savedOrder
 	log.Printf("[order]   placed for: %f\n", tsl.sellPrice)
+	fmt.Printf("[order]   placed for: %f\n", tsl.sellPrice)
 	tsl.UpdateTime()
 }
 
@@ -74,5 +75,4 @@ func (tsl *TrailingStopLoss) UpdateOrder(newPrice float64) {
 	}
 	tsl.ChangeSellPrice(newPrice)
 	tsl.CreateOrder()
-	log.Printf("[order]   placed for: %f\n", tsl.sellPrice)
 }
