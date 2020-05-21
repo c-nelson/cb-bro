@@ -18,6 +18,8 @@ func main() {
 	windowSize := 10
 	windowDuration := (time.Duration(sec*windowSize) * time.Second)
 	currency := "BTC"
+	tslPercent := 0.05
+	new := false
 
 	// set up a log file in the samem directory
 	logfile, err := os.OpenFile("tsl.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
@@ -34,7 +36,7 @@ func main() {
 	}
 
 	// get my btc account
-	btc, err := GetBTCAccount(client, currency)
+	btc, err := GetAccount(client, currency)
 	if err != nil {
 		log.Fatalf("[error]   getting btc account: %v\n", err)
 	}
@@ -43,11 +45,23 @@ func main() {
 	tsl := TrailingStopLoss{
 		client:     client,
 		account:    btc,
-		tslPercent: 0.05,
+		tslPercent: tslPercent,
+	}
+
+	// get existing stop order if one exists and set it to the current tsl
+	eo, err := GetExistingOrder(client, currency)
+	if err != nil {
+		log.Println("[warn]   didn't find existing orders")
+		new = true
+	} else {
+		tsl.sellPrice, _ = strconv.ParseFloat(eo.Price, 32)
+		tsl.order = eo
+		log.Printf("[info]   found exiting order, price %v\n", eo.Price)
+		new = false
 	}
 
 	// cancel all existing orders
-	CancelExistingOrders(client, currency)
+	//CancelExistingOrders(client, currency)
 
 	// set up a rolling window slice for the last 'windowSize' # of prices
 	var lastPrices = rolling.NewPointPolicy(rolling.NewWindow(windowSize))
@@ -64,16 +78,23 @@ func main() {
 		if err != nil {
 			continue
 		}
+		// add the newest price to the rolling window
+		lastPrices.Append(price)
 
 		// if enough time has elapsed log information
-		if sw.Elapsed() > windowDuration {
+		if sw.Elapsed()+time.Second > windowDuration {
 			logInfo(&tsl, (sec * windowSize), lastPrices, price)
 			sw.Reset()
 		}
 
+		// if no order is placed, place one
 		// if the current price is more than the rolling max
 		// update the trailing stop order to a higher value
-		if price > lastPrices.Reduce(rolling.Max) {
+		if new {
+			tsl.ChangeSellPrice(price)
+			tsl.CreateOrder()
+			new = false
+		} else if price > lastPrices.Reduce(rolling.Max) && price*(1-tslPercent) > tsl.sellPrice {
 			fmt.Println("order")
 			fmt.Println(price, lastPrices.Reduce(rolling.Max))
 			tsl.UpdateOrder(price)
@@ -82,10 +103,6 @@ func main() {
 		// if we have executed the trailing stop order
 		// exit the program
 		onSellLogAndExit(&tsl)
-
-		// add the newest price to the rolling window
-		lastPrices.Append(price)
-
 	}
 
 }

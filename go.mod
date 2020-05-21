@@ -1,4 +1,4 @@
-module github.com/c-nelson/tsl-coinbase
+module github.com/c-nelson/cbbro
 
 go 1.14
 

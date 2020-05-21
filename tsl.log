@@ -1,0 +1,6 @@
+2020/05/21 14:00:06 [warn]   didn't find existing orders
+2020/05/21 14:01:47 [info]    100 second rolling average: 8968.183984
+2020/05/21 14:01:47 [info]    100 second rolling max: 8984.860352
+2020/05/21 14:01:47 [info]    100 second rolling min: 8911.370117
+2020/05/21 14:01:47 [account] active stop order: 8533.536426
+2020/05/21 14:01:47 [account] value: 9130.853535, balance 1.0246295400000000

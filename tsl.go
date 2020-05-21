@@ -49,6 +49,7 @@ func (tsl *TrailingStopLoss) CreateOrder() {
 		log.Fatalln(err.Error())
 	}
 	tsl.order = savedOrder
+	log.Printf("[order]   placed for: %f\n", tsl.sellPrice)
 	tsl.UpdateTime()
 }
 
