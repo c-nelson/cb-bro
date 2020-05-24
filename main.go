@@ -89,10 +89,7 @@ func main() {
 
 		// if the current price is more than the rolling max
 		// update the trailing stop order to a higher value
-		fmt.Println("rolling max", lastPrices.Reduce(rolling.Max))
-		fmt.Println("price", price)
-		fmt.Println("stop", price*(1-tslPercent))
-		if price > lastPrices.Reduce(rolling.Max) || price*(1-tslPercent) > tsl.sellPrice {
+		if lastPrices.Reduce(rolling.Max)*(1-tslPercent) > tsl.sellPrice {
 			fmt.Println("--order--")
 			tsl.UpdateOrder(price)
 		}
@@ -117,7 +114,7 @@ func getCurrentPrice(c *cbp.Client) (float64, error) {
 	// get the bitcoin ticker, used to get prices
 	ticker, err := c.GetTicker("BTC-USD")
 	if err != nil {
-		log.Fatalf("[error]   finding btc ticker: %v\n", err)
+		log.Printf("[error]   finding btc ticker: %v\n", err)
 	}
 	// get the current price of bitcoin
 	curPrice, err := strconv.ParseFloat(ticker.Price, 32)
